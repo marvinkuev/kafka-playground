@@ -1,0 +1,35 @@
+# docker-composer.yml
+# This file defines your Kafka 4.0.0 KRaft single-node cluster using Docker.
+
+services:
+  kafka:
+    image: apache/kafka:4.0.0 # Specifies the official Apache Kafka Docker image, version 4.0.0
+    hostname: kafka           # Sets the hostname inside the Docker network
+    container_name: kafka_broker_4_0_0 # A memorable name for your running container
+    ports:
+      - "9092:9092" # Maps port 9092 from your host to port 9092 in the container
+                    # This is how your Python scripts will connect to Kafka.
+    environment:
+      # KRaft configuration for a single-node setup where this node acts as both broker and controller.
+      KAFKA_NODE_ID: 1                        # Unique ID for this Kafka node
+      KAFKA_PROCESS_ROLES: broker,controller # This node plays both roles
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093 # Internal listener setup
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092 # How external clients (your Python scripts) should connect
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093 # Defines the controller quorum for KRaft
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT # Security protocols
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT # Listener for inter-broker communication (even for single node)
+      KAFKA_LOG_DIRS: /tmp/kraft-data         # Directory inside the container for Kafka's data logs
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 # For single-node, must be 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1    # For single-node, must be 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1 # For single-node, must be 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0 # Speeds up consumer group rebalances (good for dev)
+
+      # **FIXED:** Explicitly tell Kafka which listener is for the controller
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      # --- IMPORTANT: KAFKA_CLUSTER_ID ---
+      # This MUST be a unique UUID generated once.
+      # Make sure you replace 'YOUR_GENERATED_CLUSTER_ID_HERE' with the actual UUID
+      # you got from 'docker run --rm apache/kafka:4.0.0 /opt/kafka/bin/kafka-storage.sh random-uuid'
+      # (e.g., 'oY8g2Z7pS4x1N3R5Q9v6W0uK')
+      KAFKA_CLUSTER_ID: 'NKRR2b6JQbKKCmY2Qe6NeQ' # <--- MAKE SURE THIS IS YOUR ACTUAL UUID!

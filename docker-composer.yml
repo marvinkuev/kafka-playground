@@ -1,35 +1,72 @@
-# docker-composer.yml
-# This file defines your Kafka 4.0.0 KRaft single-node cluster using Docker.
+import time
+import random
+import json
+from datetime import datetime
+from kafka import KafkaProducer
 
-services:
-  kafka:
-    image: apache/kafka:4.0.0 # Specifies the official Apache Kafka Docker image, version 4.0.0
-    hostname: kafka           # Sets the hostname inside the Docker network
-    container_name: kafka_broker_4_0_0 # A memorable name for your running container
-    ports:
-      - "9092:9092" # Maps port 9092 from your host to port 9092 in the container
-                    # This is how your Python scripts will connect to Kafka.
-    environment:
-      # KRaft configuration for a single-node setup where this node acts as both broker and controller.
-      KAFKA_NODE_ID: 1                        # Unique ID for this Kafka node
-      KAFKA_PROCESS_ROLES: broker,controller # This node plays both roles
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093 # Internal listener setup
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092 # How external clients (your Python scripts) should connect
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093 # Defines the controller quorum for KRaft
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT # Security protocols
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT # Listener for inter-broker communication (even for single node)
-      KAFKA_LOG_DIRS: /tmp/kraft-data         # Directory inside the container for Kafka's data logs
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 # For single-node, must be 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1    # For single-node, must be 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1 # For single-node, must be 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0 # Speeds up consumer group rebalances (good for dev)
+# --- Kafka configuration ---
+KAFKA_BROKER = "localhost:9092"
+KAFKA_TOPIC = "purchase_events"
 
-      # **FIXED:** Explicitly tell Kafka which listener is for the controller
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+def generate_random_data():
+    """Generates a single row of randomized purchase data."""
+    names = ["Alice", "Bob", "Charlie", "Diana", "Eve", "Frank"]
+    genders = ["Male", "Female", "Non-binary"]
+    locations = ["New York", "London", "Paris", "Tokyo", "Berlin"]
+    return {
+        "name": random.choice(names),
+        "gender": random.choice(genders),
+        "location": random.choice(locations),
+        "purchase_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "price": round(random.uniform(10.00, 1000.00), 2)
+    }
 
-      # --- IMPORTANT: KAFKA_CLUSTER_ID ---
-      # This MUST be a unique UUID generated once.
-      # Make sure you replace 'YOUR_GENERATED_CLUSTER_ID_HERE' with the actual UUID
-      # you got from 'docker run --rm apache/kafka:4.0.0 /opt/kafka/bin/kafka-storage.sh random-uuid'
-      # (e.g., 'oY8g2Z7pS4x1N3R5Q9v6W0uK')
-      KAFKA_CLUSTER_ID: 'NKRR2b6JQbKKCmY2Qe6NeQ' # <--- MAKE SURE THIS IS YOUR ACTUAL UUID!
+def run_producer(messages_per_second):
+    """Runs the Kafka producer at the specified rate."""
+    print("Initializing Kafka Producer...")
+    producer = None
+    try:
+        producer = KafkaProducer(
+            bootstrap_servers=[KAFKA_BROKER],
+            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+            key_serializer=lambda k: str(k).encode('utf-8'),
+            acks='all',
+            retries=5
+        )
+        print(f"Producer connected to {KAFKA_BROKER}. Sending data to topic: {KAFKA_TOPIC}")
+        print("-" * 30)
+
+        while True:
+            data_row = generate_random_data()
+            producer.send(
+                topic=KAFKA_TOPIC,
+                value=data_row,
+                key=data_row["location"]
+            )
+            print(f"Produced: {data_row}")
+            time.sleep(1 / messages_per_second)
+
+    except KeyboardInterrupt:
+        print("\n--- Data generation stopped. ---")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+    finally:
+        if producer:
+            print("Flushing outstanding messages...")
+            producer.flush()
+            producer.close()
+            print("Producer shut down.")
+
+if __name__ == "__main__":
+    while True:
+        try:
+            mps_input = input("Enter the desired messages per second (e.g., 5): ")
+            mps = int(mps_input)
+            if mps > 0:
+                break
+            else:
+                print("Please enter a positive number.")
+        except ValueError:
+            print("Invalid input. Please enter a whole number.")
+    
+    run_producer(mps)

@@ -6,7 +6,7 @@ from datetime import datetime
 
 # --- Configuration ---
 # Make sure this is the correct private or public IP of your Kafka broker
-KAFKA_BROKER = '34.244.74.153:9092'
+KAFKA_BROKER = 'PUBLIC_IP:9092'
 TOPIC_NAME = 'electronic_store_data'
 
 # --- Producer Setup ---

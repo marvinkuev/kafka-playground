@@ -1,0 +1,130 @@
+import json
+import time
+import random
+from kafka import KafkaProducer
+from datetime import datetime
+
+# --- Configuration ---
+# Make sure this is the correct private or public IP of your Kafka broker
+KAFKA_BROKER = '34.244.74.153:9092'
+TOPIC_NAME = 'electronic_store_data'
+
+# --- Producer Setup ---
+def create_producer():
+    """Initializes and returns a KafkaProducer instance."""
+    try:
+        producer = KafkaProducer(
+            bootstrap_servers=[KAFKA_BROKER],
+            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+            api_version=(0, 10, 1)
+        )
+        print(f"Producer connected to Kafka broker: {KAFKA_BROKER}")
+        return producer
+    except Exception as e:
+        print(f"Error connecting producer to Kafka: {e}")
+        return None
+
+# --- Data Generation Functions ---
+def _generate_single_customer_details():
+    """Generates customer details for a transaction."""
+    customer_id = random.randint(1000, 9999)
+    age = random.randint(18, 70)
+    locations = ["New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "Miami", "Seattle"]
+    return {
+        "customer_id": f"CUST-{customer_id}",
+        "location": random.choice(locations),
+        "age": age
+    }
+
+def _generate_single_product_details():
+    """Generates product details for a transaction."""
+    product_id = random.randint(100, 999)
+    product_names = ["Laptop", "Smartphone", "Headphones", "Smartwatch", "Tablet", "Monitor", "Keyboard", "Mouse"]
+    colors = ["Black", "Silver", "White", "Blue", "Red", "Green"]
+    return {
+        "product_id": f"PROD-{product_id}",
+        "name": random.choice(product_names),
+        "price": round(random.uniform(50.0, 1500.0), 2),
+        "color": random.choice(colors)
+    }
+
+def generate_transaction_data():
+    """
+    Generates a single transaction message with ONE product.
+    """
+    transaction_timestamp = datetime.now().isoformat()
+    customer_details = _generate_single_customer_details()
+    product_details = _generate_single_product_details()
+    
+    quantity = random.randint(1, 10)
+    total_cost = product_details["price"] * quantity
+
+    # Order Data
+    order_id = f"ORD-{random.randint(100000, 999999)}"
+    payment_types = ["Credit Card", "Debit Card", "PayPal", "Bank Transfer"]
+
+    order_details = {
+        "order_id": order_id,
+        "cost": round(total_cost, 2),
+        "payment_type": random.choice(payment_types),
+        "quantity": quantity
+    }
+
+    # Combine all into a single transaction message
+    transaction_message = {
+        "type": "transaction",
+        "timestamp": transaction_timestamp,
+        "customer": customer_details,
+        "order": order_details,
+        "product": product_details # Reverted from "products" array to single "product" object
+    }
+    return transaction_message
+
+# --- Producer Logic ---
+def run_producer(messages_per_second):
+    """
+    Runs the Kafka producer, sending transaction messages at the specified rate.
+    """
+    producer = create_producer()
+    if not producer:
+        return
+
+    message_count = 0
+    print(f"\nStarting producer. Sending {messages_per_second} messages/second to topic '{TOPIC_NAME}'...")
+    try:
+        while True:
+            message = generate_transaction_data()
+            producer.send(TOPIC_NAME, value=message)
+            message_count += 1
+
+            if message_count % 100 == 0:
+                print(f"Sent {message_count} messages. Last message: Order ID {message['order']['order_id']}.")
+
+            time.sleep(1 / messages_per_second)
+
+    except KeyboardInterrupt:
+        print("\nProducer stopped by user.")
+    except Exception as e:
+        print(f"An error occurred in producer: {e}")
+    finally:
+        if producer:
+            producer.flush()
+            producer.close()
+            print("Producer closed.")
+
+# --- Main Execution ---
+if __name__ == "__main__":
+    print("Kafka Producer Script (Single Item)")
+    print("-----------------------------------")
+    
+    while True:
+        try:
+            mps = int(input("Enter the desired messages per second (e.g., 5): "))
+            if mps > 0:
+                break
+            else:
+                print("Please enter a positive number.")
+        except ValueError:
+            print("Invalid input. Please enter a number.")
+            
+    run_producer(mps)
